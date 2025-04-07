@@ -1,14 +1,14 @@
 const sql = require("mssql");
 
 const config = {
-  user: "hoangdien_user", // Đúng chuẩn của mssql
-  password: "Diendien1801@", // Đúng chuẩn của mssql
-  server: "localhost", // Địa chỉ server (nếu chạy trên máy local)
-  database: "ITHELPER", // Tên database
-  port: 1433, // Port của SQL Server (1433 là mặc định)
+  user: "hoangdien_user", 
+  password: "", 
+  server: "localhost", 
+  database: "ITHELPER", 
+  port: 1433, 
   options: {
-    encrypt: false, // Nếu dùng Azure SQL thì đổi thành true
-    trustServerCertificate: true, // Bắt buộc nếu dùng localhost hoặc kết nối không có chứng chỉ SSL
+    encrypt: false, 
+    trustServerCertificate: true, 
   },
 };
 
