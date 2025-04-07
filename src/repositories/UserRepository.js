@@ -12,7 +12,7 @@ const getUserByUsername = async (username) => {
   return result.recordset[0]; // Trả về user nếu tìm thấy
 };
 
-const createUser = async (username, hashedPassword, role) => {
+const createUser = async (username, hashedPassword, role,level) => {
   const pool = await poolPromise;
   const userId = uuidv4(); // Tạo UUID mới
 
@@ -23,9 +23,9 @@ const createUser = async (username, hashedPassword, role) => {
     .input("password", sql.NVarChar(255), hashedPassword)
     .input("role", sql.NVarChar(20), role)
     .input("createAt", sql.DateTime, new Date()) // Thêm ngày tạo tài khoản
-    .query(`
-      INSERT INTO Users (idUser, username, password, role, createAt)
-      VALUES (@idUser, @username, @password, @role, @createAt)
+    .input("level", sql.NVARCHAR(20), level).query(`
+      INSERT INTO Users (idUser, username, password, role, createAt, level)
+      VALUES (@idUser, @username, @password, @role, @createAt, @level)
     `);
 
   return { idUser: userId, username, role };

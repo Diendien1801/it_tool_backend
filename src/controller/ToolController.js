@@ -70,4 +70,9 @@ const getAllTools = async (req, res) => {
     });
   }
 };
-module.exports = { getToolTypes, getToolList, getAllTools };
+
+
+
+
+
+module.exports = { getToolTypes, getToolList, getAllTools};
