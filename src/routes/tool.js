@@ -5,6 +5,7 @@ const {
   getToolList,
   getAllTools,
   
+  
  
 } = require("../controller/ToolController");
 
@@ -14,6 +15,8 @@ router.get("/categories", getToolTypes);
 router.get("/categories/:idToolType", getToolList);
 
 router.get("/categories/all", getAllTools);
+
+
 
 
 

@@ -149,4 +149,25 @@ const login = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    console.log("[DEBUG] Logout request received");
+
+    // Xóa token trên client (thực hiện ở phía client)
+    // Có thể thêm logic để xóa token khỏi server nếu cần
+
+    res.json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.error("[ERROR] Logout failed:", error);
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: "Internal server error",
+    });
+  }
+}
+
 module.exports = { register, login };

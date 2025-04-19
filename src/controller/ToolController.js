@@ -23,12 +23,14 @@ const getToolList = async (req, res) => {
     const pool = await poolPromise;
 
     if (idToolType === "0") {
-      // Nếu idToolType là "0", lấy tất cả tools
-      const result = await pool.request().query("SELECT * FROM Tools");
+      // Lấy tất cả tool có isDelete = 0
+      const result = await pool
+        .request()
+        .query("SELECT * FROM Tools WHERE isDelete = 0");
       return res.json({ success: true, data: result.recordset });
     }
 
-    // Kiểm tra nếu idToolType tồn tại trong bảng ToolTypes
+    // Kiểm tra tồn tại idToolType
     const typeCheck = await pool
       .request()
       .input("idToolType", sql.VarChar, idToolType)
@@ -40,11 +42,13 @@ const getToolList = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy idToolType này" });
     }
 
-    // Nếu tồn tại, lấy danh sách tools theo idToolType
+    // Lấy danh sách tool theo loại và isDelete = 0
     const result = await pool
       .request()
       .input("idToolType", sql.VarChar, idToolType)
-      .query("SELECT * FROM Tools WHERE idToolType = @idToolType");
+      .query(
+        "SELECT * FROM Tools WHERE idToolType = @idToolType AND isDelete = 0"
+      );
 
     res.json({ success: true, data: result.recordset });
   } catch (error) {
@@ -54,6 +58,8 @@ const getToolList = async (req, res) => {
       .json({ message: "Lỗi khi lấy danh sách tools", error: error.message });
   }
 };
+
+
 
 
 // lấy danh sách tất cả các tools
@@ -75,4 +81,4 @@ const getAllTools = async (req, res) => {
 
 
 
-module.exports = { getToolTypes, getToolList, getAllTools};
+module.exports = { getToolTypes, getToolList, getAllTools };

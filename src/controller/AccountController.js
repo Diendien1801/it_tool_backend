@@ -249,18 +249,16 @@ const requestUpgradeAccount = async (req, res) => {
         });
       }
 
-      if (status === "rejected") {
-        return res.status(400).json({
-          success: false,
-          message: "Yêu cầu nâng cấp của bạn đã bị từ chối.",
-        });
-      }
-
       if (status === "accepted") {
         return res.status(400).json({
           success: false,
           message: "Tài khoản của bạn đã được nâng cấp.",
         });
+      }
+
+      // Nếu bị từ chối thì vẫn cho phép gửi lại => không return ở đây
+      if (status === "rejected") {
+        console.log(`[INFO] Yêu cầu trước bị từ chối, cho phép gửi lại`);
       }
     }
 
@@ -289,10 +287,14 @@ const requestUpgradeAccount = async (req, res) => {
   }
 };
 
+
+
+
 module.exports = {
   getAccountInfo,
   getFavouriteTools,
   addFavouriteTool,
   removeFavouriteTool,
   requestUpgradeAccount,
+  
 };

@@ -2,7 +2,7 @@ const { sql, poolPromise } = require("../config/db");
 const jwt = require("jsonwebtoken"); // Import jwt
 const JWT_SECRET = process.env.JWT_SECRET; // Lấy secret từ biến môi trường
 const bcrypt = require("bcrypt"); // Import bcrypt
-
+const { v4: uuidv4 } = require("uuid");
 // Hàm giải mã token để lấy idUser
 const getUserIdFromToken = (req) => {
   try {
@@ -85,10 +85,14 @@ const getAllUpgradeRequests = async (req, res) => {
         WHERE r.status = 'pending'
         ORDER BY r.createdAt DESC
     `;
-    console.log(`[DEBUG] Thực hiện truy vấn lấy danh sách yêu cầu: ${upgradeQuery}`);
+    console.log(
+      `[DEBUG] Thực hiện truy vấn lấy danh sách yêu cầu: ${upgradeQuery}`
+    );
 
     const result = await pool.request().query(upgradeQuery);
-    console.log(`[DEBUG] Số lượng yêu cầu lấy được: ${result.recordset.length}`);
+    console.log(
+      `[DEBUG] Số lượng yêu cầu lấy được: ${result.recordset.length}`
+    );
 
     res.json({
       success: true,
@@ -104,7 +108,6 @@ const getAllUpgradeRequests = async (req, res) => {
     });
   }
 };
-
 
 // accept upgrade request
 const acceptUpgradeRequest = async (req, res) => {
@@ -278,12 +281,10 @@ const disableToolById = async (req, res) => {
 
     const role = userCheck.recordset[0].role;
     if (role !== "admin") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Bạn không có quyền thực hiện hành động này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện hành động này",
+      });
     }
 
     // Kiểm tra xem tool có tồn tại không
@@ -337,12 +338,10 @@ const enableToolById = async (req, res) => {
 
     const role = userCheck.recordset[0].role;
     if (role !== "admin") {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Bạn không có quyền thực hiện hành động này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện hành động này",
+      });
     }
 
     // Kiểm tra xem tool có tồn tại không
@@ -462,13 +461,283 @@ const updateToolAccessLevel = async (req, res) => {
     });
   }
 };
+// xóa tool
+// Xóa giả một tool (soft delete), chỉ admin được phép
+const softDeleteTool = async (req, res) => {
+  try {
+    const idUser = getUserIdFromToken(req);
+    const { idTool } = req.body;
+
+    console.log(`[DEBUG] Admin (${idUser}) yêu cầu xóa tool: ${idTool}`);
+
+    const pool = await poolPromise;
+
+    // Lấy thông tin user để kiểm tra quyền
+    const userResult = await pool
+      .request()
+      .input("idUser", sql.UniqueIdentifier, idUser)
+      .query("SELECT role FROM Users WHERE idUser = @idUser");
+
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng",
+      });
+    }
+
+    const userRole = userResult.recordset[0].role;
+    if (userRole !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện thao tác này",
+      });
+    }
+
+    // Kiểm tra tool có tồn tại không
+    const toolResult = await pool
+      .request()
+      .input("idTool", sql.VarChar(50), idTool)
+      .query("SELECT * FROM Tools WHERE idTool = @idTool");
+
+    if (toolResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy tool để xóa",
+      });
+    }
+
+    // Cập nhật isDelete = 1 (soft delete)
+    await pool
+      .request()
+      .input("idTool", sql.VarChar(50), idTool)
+      .query("UPDATE Tools SET isDelete = 1 WHERE idTool = @idTool");
+
+    res.json({
+      success: true,
+      message: "Xóa tool thành công",
+    });
+  } catch (error) {
+    console.error("❌ [ERROR] Xóa tool thất bại:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi xóa tool",
+      error: error.message,
+    });
+  }
+};
+
+const addNewTool = async (req, res) => {
+  try {
+    const idUser = getUserIdFromToken(req); // Lấy id người dùng từ token
+    const pool = await poolPromise;
+
+    // Kiểm tra quyền admin
+    const checkRole = await pool
+      .request()
+      .input("idUser", sql.UniqueIdentifier, idUser)
+      .query("SELECT role FROM Users WHERE idUser = @idUser");
+
+    const role = checkRole.recordset[0]?.role;
+    if (role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thêm công cụ",
+      });
+    }
+
+    // Lấy dữ liệu từ body
+    const { name, descript, iconURL, access_level, dllPath, idToolType } =
+      req.body;
+
+    // Kiểm tra thiếu thông tin
+    if (!name || !descript || !access_level || !dllPath || !idToolType) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin bắt buộc",
+      });
+    }
+
+    const idTool = uuidv4();
+
+    const insertQuery = `
+      INSERT INTO Tools (
+        idTool, name, descript, status, access_level, 
+        iconURL, dllPath, idToolType, isDelete
+      )
+      VALUES (
+        @idTool, @name, @descript, 'active', @access_level, 
+        @iconURL, @dllPath, @idToolType, 0
+      )
+    `;
+
+    await pool
+      .request()
+      .input("idTool", sql.UniqueIdentifier, idTool)
+      .input("name", sql.NVarChar, name)
+      .input("descript", sql.NVarChar, descript)
+      .input("access_level", sql.NVarChar, access_level)
+      .input("iconURL", sql.NVarChar, iconURL || "")
+      .input("dllPath", sql.NVarChar, dllPath)
+      .input("idToolType", sql.Int, idToolType)
+      .query(insertQuery);
+
+    res.json({
+      success: true,
+      message: "Thêm công cụ thành công",
+      data: { idTool },
+    });
+  } catch (error) {
+    console.error("[ERROR] Thêm tool thất bại:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi thêm tool",
+      error: error.message,
+    });
+  }
+};
+
+const recoverTool = async (req, res) => {
+  try {
+    const idUser = getUserIdFromToken(req);
+    const { idTool } = req.body;
+
+    console.log(`[DEBUG] Admin (${idUser}) yêu cầu khôi phục tool: ${idTool}`);
+
+    const pool = await poolPromise;
+
+    // Lấy thông tin user để kiểm tra quyền
+    const userResult = await pool
+      .request()
+      .input("idUser", sql.UniqueIdentifier, idUser)
+      .query("SELECT role FROM Users WHERE idUser = @idUser");
+
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng",
+      });
+    }
+
+    const userRole = userResult.recordset[0].role;
+    if (userRole !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện thao tác này",
+      });
+    }
+
+    // Kiểm tra tool có tồn tại và đã bị xóa mềm chưa
+    const toolResult = await pool
+      .request()
+      .input("idTool", sql.VarChar(50), idTool)
+      .query("SELECT * FROM Tools WHERE idTool = @idTool AND isDelete = 1");
+
+    if (toolResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy tool hoặc tool chưa bị xóa",
+      });
+    }
+
+    // Cập nhật isDelete = 0 để khôi phục
+    await pool
+      .request()
+      .input("idTool", sql.VarChar(50), idTool)
+      .query("UPDATE Tools SET isDelete = 0 WHERE idTool = @idTool");
+
+    res.json({
+      success: true,
+      message: "Khôi phục tool thành công",
+    });
+  } catch (error) {
+    console.error("❌ [ERROR] Khôi phục tool thất bại:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi khôi phục tool",
+      error: error.message,
+    });
+  }
+};
+
+const addNewToolType = async (req, res) => {
+  try {
+    const idUser = getUserIdFromToken(req);
+    const { name, iconURL } = req.body;
+
+    if (!name || name.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Tên loại công cụ không được để trống",
+      });
+    }
+
+    const pool = await poolPromise;
+
+    // Kiểm tra quyền user
+    const userResult = await pool
+      .request()
+      .input("idUser", sql.UniqueIdentifier, idUser)
+      .query("SELECT role FROM Users WHERE idUser = @idUser");
+
+    if (userResult.recordset.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng",
+      });
+    }
+
+    const userRole = userResult.recordset[0].role;
+    if (userRole !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền thực hiện thao tác này",
+      });
+    }
+
+    // ✅ Lấy danh sách idToolType hiện có
+    const idResult = await pool
+      .request()
+      .query("SELECT idToolType FROM ToolTypes");
+    const idList = idResult.recordset
+      .map((row) => parseInt(row.idToolType))
+      .filter((n) => !isNaN(n));
+    const newId = (Math.max(...idList, 0) + 1).toString(); // Tìm ID lớn nhất + 1, rồi chuyển thành string
+
+    // ✅ Insert dữ liệu
+    await pool
+      .request()
+      .input("idToolType", sql.VarChar(50), newId)
+      .input("name", sql.NVarChar(100), name.trim())
+      .input("iconURL", sql.NVarChar(255), iconURL.trim()).query(`
+        INSERT INTO ToolTypes (idToolType, name, iconURL)
+        VALUES (@idToolType, @name, @iconURL)
+      `);
+
+    res.json({
+      success: true,
+      message: "Thêm loại công cụ thành công",
+    });
+  } catch (error) {
+    console.error("❌ [ERROR] Thêm loại công cụ thất bại:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi thêm loại công cụ",
+      error: error.message,
+    });
+  }
+};
+
 
 module.exports = {
-    getAllUpgradeRequests,
-    acceptUpgradeRequest,
-    rejectUpgradeRequest,
-    disableToolById,
-    enableToolById,
-    getAllTools,
-    updateToolAccessLevel,
+  getAllUpgradeRequests,
+  acceptUpgradeRequest,
+  rejectUpgradeRequest,
+  disableToolById,
+  enableToolById,
+  getAllTools,
+  updateToolAccessLevel,
+  softDeleteTool,
+  addNewTool,
+  recoverTool,
+  addNewToolType,
 };
