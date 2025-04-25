@@ -112,35 +112,35 @@ const getAllUpgradeRequests = async (req, res) => {
 // accept upgrade request
 const acceptUpgradeRequest = async (req, res) => {
   try {
-    console.log("[DEBUG] Bắt đầu xử lý Accept Request");
+    console.log("[DEBUG] Starting to process Accept Request");
 
     const { idRequest } = req.body;
     if (!idRequest) {
       return res
         .status(400)
-        .json({ success: false, message: "Thiếu idRequest" });
+        .json({ success: false, message: "Missing idRequest" });
     }
 
-    const idAdmin = getUserIdFromToken(req); // Giải mã token để lấy idUser
+    const idAdmin = getUserIdFromToken(req); // Decode token to get idUser
     const pool = await poolPromise;
 
-    // Kiểm tra role của user
+    // Check user's role
     const checkRoleResult = await pool
       .request()
       .input("idUser", sql.NVarChar, idAdmin)
       .query("SELECT role FROM Users WHERE idUser = @idUser");
 
     const role = checkRoleResult.recordset[0]?.role;
-    console.log(`[DEBUG] Vai trò người dùng: ${role}`);
+    console.log(`[DEBUG] User role: ${role}`);
 
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện thao tác này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Lấy idUser của người gửi request từ bảng UpgradeRequests
+    // Get idUser from the upgrade request
     const requestResult = await pool
       .request()
       .input("idRequest", sql.UniqueIdentifier, idRequest)
@@ -149,26 +149,26 @@ const acceptUpgradeRequest = async (req, res) => {
     if (requestResult.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy yêu cầu nâng cấp" });
+        .json({ success: false, message: "Upgrade request not found" });
     }
 
     const idUserToUpgrade = requestResult.recordset[0].idUser;
-    console.log(`[DEBUG] Upgrade cho user: ${idUserToUpgrade}`);
+    console.log(`[DEBUG] Upgrading user: ${idUserToUpgrade}`);
 
-    // Cập nhật trạng thái yêu cầu & cập nhật level người dùng
+    // Update request status and upgrade user level using a transaction
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
 
     const request = new sql.Request(transaction);
 
-    // Cập nhật bảng yêu cầu
+    // Update the upgrade request status
     await request.input("idRequest", sql.UniqueIdentifier, idRequest).query(`
         UPDATE UpgradeRequests
         SET status = 'approved', handledAt = GETDATE()
         WHERE idRequest = @idRequest
       `);
 
-    // Cập nhật level user (ở đây gán 'premium', bạn có thể thay thành gì tùy ý)
+    // Update user's level (set to 'premium', you can customize this)
     await request.input("idUser", sql.NVarChar, idUserToUpgrade).query(`
         UPDATE Users
         SET level = 'premium'
@@ -177,51 +177,55 @@ const acceptUpgradeRequest = async (req, res) => {
 
     await transaction.commit();
 
-    console.log("[DEBUG] Đã cập nhật thành công yêu cầu và người dùng");
+    console.log("[DEBUG] Successfully updated request and user");
     res.json({
       success: true,
-      message: "Đã chấp nhận yêu cầu nâng cấp tài khoản",
+      message: "Upgrade request approved successfully",
     });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi chấp nhận yêu cầu:", error.message);
+    console.error(
+      "[ERROR] Error while accepting upgrade request:",
+      error.message
+    );
     res.status(500).json({
       success: false,
-      message: "Lỗi server",
+      message: "Server error",
       error: error.message,
     });
   }
 };
+
 const rejectUpgradeRequest = async (req, res) => {
   try {
-    console.log("[DEBUG] Bắt đầu xử lý Reject Request");
+    console.log("[DEBUG] Starting to process Reject Request");
 
     const { idRequest } = req.body;
     if (!idRequest) {
       return res
         .status(400)
-        .json({ success: false, message: "Thiếu idRequest" });
+        .json({ success: false, message: "Missing idRequest" });
     }
 
     const idAdmin = getUserIdFromToken(req);
     const pool = await poolPromise;
 
-    // Kiểm tra vai trò
+    // Check the role of the user
     const checkRoleResult = await pool
       .request()
       .input("idUser", sql.NVarChar, idAdmin)
       .query("SELECT role FROM Users WHERE idUser = @idUser");
 
     const role = checkRoleResult.recordset[0]?.role;
-    console.log(`[DEBUG] Vai trò người dùng: ${role}`);
+    console.log(`[DEBUG] User role: ${role}`);
 
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện thao tác này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Kiểm tra yêu cầu có tồn tại không
+    // Check if the upgrade request exists
     const requestResult = await pool
       .request()
       .input("idRequest", sql.UniqueIdentifier, idRequest)
@@ -230,10 +234,10 @@ const rejectUpgradeRequest = async (req, res) => {
     if (requestResult.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy yêu cầu nâng cấp" });
+        .json({ success: false, message: "Upgrade request not found" });
     }
 
-    // Cập nhật trạng thái yêu cầu sang rejected
+    // Update the request status to 'rejected'
     await pool.request().input("idRequest", sql.UniqueIdentifier, idRequest)
       .query(`
         UPDATE UpgradeRequests
@@ -241,33 +245,39 @@ const rejectUpgradeRequest = async (req, res) => {
         WHERE idRequest = @idRequest
       `);
 
-    console.log("[DEBUG] Đã từ chối yêu cầu thành công");
+    console.log("[DEBUG] Successfully rejected the upgrade request");
     res.json({
       success: true,
-      message: "Đã từ chối yêu cầu nâng cấp tài khoản",
+      message: "Upgrade request rejected successfully",
     });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi từ chối yêu cầu:", error.message);
+    console.error(
+      "[ERROR] Error while rejecting upgrade request:",
+      error.message
+    );
     res.status(500).json({
       success: false,
-      message: "Lỗi server",
+      message: "Server error",
       error: error.message,
     });
   }
 };
 
+
 const disableToolById = async (req, res) => {
   try {
     const { idTool } = req.body;
     if (!idTool) {
-      return res.status(400).json({ success: false, message: "Thiếu idTool" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing idTool" });
     }
 
-    // Lấy idUser từ token
+    // Get idUser from token
     const idUser = getUserIdFromToken(req);
     const pool = await poolPromise;
 
-    // Kiểm tra quyền admin
+    // Check admin permission
     const userCheck = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -276,18 +286,18 @@ const disableToolById = async (req, res) => {
     if (userCheck.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy người dùng" });
+        .json({ success: false, message: "User not found" });
     }
 
     const role = userCheck.recordset[0].role;
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện hành động này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Kiểm tra xem tool có tồn tại không
+    // Check if the tool exists
     const checkTool = await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
@@ -296,35 +306,38 @@ const disableToolById = async (req, res) => {
     if (checkTool.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy công cụ" });
+        .json({ success: false, message: "Tool not found" });
     }
 
-    // Cập nhật trạng thái tool
+    // Update tool status
     await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
       .query("UPDATE Tools SET status = 'disable' WHERE idTool = @idTool");
 
-    res.json({ success: true, message: "Đã disable công cụ thành công" });
+    res.json({ success: true, message: "Tool has been successfully disabled" });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi disable công cụ:", error.message);
+    console.error("[ERROR] Error disabling the tool:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Lỗi server", error: error.message });
+      .json({ success: false, message: "Server error", error: error.message });
   }
 };
+
 const enableToolById = async (req, res) => {
   try {
     const { idTool } = req.body;
     if (!idTool) {
-      return res.status(400).json({ success: false, message: "Thiếu idTool" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing idTool" });
     }
 
-    // Lấy idUser từ token
+    // Get idUser from token
     const idUser = getUserIdFromToken(req);
     const pool = await poolPromise;
 
-    // Kiểm tra quyền admin
+    // Check admin permission
     const userCheck = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -333,18 +346,18 @@ const enableToolById = async (req, res) => {
     if (userCheck.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy người dùng" });
+        .json({ success: false, message: "User not found" });
     }
 
     const role = userCheck.recordset[0].role;
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện hành động này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Kiểm tra xem tool có tồn tại không
+    // Check if the tool exists
     const checkTool = await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
@@ -353,21 +366,24 @@ const enableToolById = async (req, res) => {
     if (checkTool.recordset.length === 0) {
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy công cụ" });
+        .json({ success: false, message: "Tool not found" });
     }
 
-    // Cập nhật trạng thái tool
+    // Update tool status
     await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
       .query("UPDATE Tools SET status = 'active' WHERE idTool = @idTool");
 
-    res.json({ success: true, message: "Đã active công cụ thành công" });
+    res.json({
+      success: true,
+      message: "Tool has been successfully activated",
+    });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi active công cụ:", error.message);
+    console.error("[ERROR] Error activating the tool:", error.message);
     res
       .status(500)
-      .json({ success: false, message: "Lỗi server", error: error.message });
+      .json({ success: false, message: "Server error", error: error.message });
   }
 };
 
@@ -398,14 +414,14 @@ const updateToolAccessLevel = async (req, res) => {
     if (!idTool || !accessLevel) {
       return res.status(400).json({
         success: false,
-        message: "Thiếu idTool hoặc accessLevel",
+        message: "Missing idTool or accessLevel",
       });
     }
 
     const idUser = getUserIdFromToken(req);
     const pool = await poolPromise;
 
-    // Kiểm tra quyền admin
+    // Check admin permission
     const userCheck = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -414,7 +430,7 @@ const updateToolAccessLevel = async (req, res) => {
     if (userCheck.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy người dùng",
+        message: "User not found",
       });
     }
 
@@ -422,11 +438,11 @@ const updateToolAccessLevel = async (req, res) => {
     if (role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện hành động này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Kiểm tra tool tồn tại
+    // Check if the tool exists
     const toolCheck = await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
@@ -435,11 +451,11 @@ const updateToolAccessLevel = async (req, res) => {
     if (toolCheck.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy công cụ",
+        message: "Tool not found",
       });
     }
 
-    // Cập nhật access level
+    // Update access level
     await pool
       .request()
       .input("idTool", sql.UniqueIdentifier, idTool)
@@ -450,29 +466,32 @@ const updateToolAccessLevel = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Cập nhật access level thành công",
+      message: "Access level updated successfully",
     });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi cập nhật access level:", error.message);
+    console.error("[ERROR] Error updating access level:", error.message);
     res.status(500).json({
       success: false,
-      message: "Lỗi server",
+      message: "Server error",
       error: error.message,
     });
   }
 };
+
 // xóa tool
 // Xóa giả một tool (soft delete), chỉ admin được phép
 const softDeleteTool = async (req, res) => {
   try {
-    const idUser = getUserIdFromToken(req);
-    const { idTool } = req.body;
+    const idUser = getUserIdFromToken(req); // Get user ID from token
+    const { idTool } = req.body; // Get the tool ID from the request body
 
-    console.log(`[DEBUG] Admin (${idUser}) yêu cầu xóa tool: ${idTool}`);
+    console.log(
+      `[DEBUG] Admin (${idUser}) requested to delete tool: ${idTool}`
+    );
 
-    const pool = await poolPromise;
+    const pool = await poolPromise; // Get database connection pool
 
-    // Lấy thông tin user để kiểm tra quyền
+    // Check the user's role (must be admin)
     const userResult = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -481,7 +500,7 @@ const softDeleteTool = async (req, res) => {
     if (userResult.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy người dùng",
+        message: "User not found",
       });
     }
 
@@ -489,11 +508,11 @@ const softDeleteTool = async (req, res) => {
     if (userRole !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền thực hiện thao tác này",
+        message: "You do not have permission to perform this action",
       });
     }
 
-    // Kiểm tra tool có tồn tại không
+    // Check if the tool exists in the database
     const toolResult = await pool
       .request()
       .input("idTool", sql.VarChar(50), idTool)
@@ -502,11 +521,11 @@ const softDeleteTool = async (req, res) => {
     if (toolResult.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy tool để xóa",
+        message: "Tool not found to delete",
       });
     }
 
-    // Cập nhật isDelete = 1 (soft delete)
+    // Perform a soft delete by setting isDelete = 1
     await pool
       .request()
       .input("idTool", sql.VarChar(50), idTool)
@@ -514,13 +533,13 @@ const softDeleteTool = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Xóa tool thành công",
+      message: "Tool deleted successfully",
     });
   } catch (error) {
-    console.error("❌ [ERROR] Xóa tool thất bại:", error);
+    console.error("❌ [ERROR] Tool deletion failed:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi xóa tool",
+      message: "Error deleting tool",
       error: error.message,
     });
   }
@@ -528,10 +547,10 @@ const softDeleteTool = async (req, res) => {
 
 const addNewTool = async (req, res) => {
   try {
-    const idUser = getUserIdFromToken(req); // Lấy id người dùng từ token
+    const idUser = getUserIdFromToken(req); // Get user ID from token
     const pool = await poolPromise;
 
-    // Kiểm tra quyền admin
+    // Check if the user is an admin
     const checkRole = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -545,11 +564,11 @@ const addNewTool = async (req, res) => {
       });
     }
 
-    // Lấy dữ liệu từ body
+    // Get data from request body
     const { name, descript, iconURL, access_level, dllPath, idToolType } =
       req.body;
 
-    // Kiểm tra thiếu thông tin
+    // Validate required fields
     if (!name || !descript || !access_level || !dllPath || !idToolType) {
       return res.status(400).json({
         success: false,
@@ -557,8 +576,10 @@ const addNewTool = async (req, res) => {
       });
     }
 
+    // Generate a unique tool ID
     const idTool = uuidv4();
 
+    // Insert the new tool into the database
     const insertQuery = `
       INSERT INTO Tools (
         idTool, name, descript, status, access_level, 
@@ -595,6 +616,7 @@ const addNewTool = async (req, res) => {
     });
   }
 };
+
 
 const recoverTool = async (req, res) => {
   try {
@@ -659,11 +681,13 @@ const recoverTool = async (req, res) => {
   }
 };
 
+
 const addNewToolType = async (req, res) => {
   try {
-    const idUser = getUserIdFromToken(req);
+    const idUser = getUserIdFromToken(req); // Get user ID from token
     const { name, iconURL } = req.body;
 
+    // Check if name is provided
     if (!name || name.trim() === "") {
       return res.status(400).json({
         success: false,
@@ -673,7 +697,7 @@ const addNewToolType = async (req, res) => {
 
     const pool = await poolPromise;
 
-    // Kiểm tra quyền user
+    // Check user's role (must be admin)
     const userResult = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -694,16 +718,18 @@ const addNewToolType = async (req, res) => {
       });
     }
 
-    // ✅ Lấy danh sách idToolType hiện có
+    // Get list of existing tool types' IDs
     const idResult = await pool
       .request()
       .query("SELECT idToolType FROM ToolTypes");
     const idList = idResult.recordset
       .map((row) => parseInt(row.idToolType))
       .filter((n) => !isNaN(n));
-    const newId = (Math.max(...idList, 0) + 1).toString(); // Tìm ID lớn nhất + 1, rồi chuyển thành string
 
-    // ✅ Insert dữ liệu
+    // Generate new ID (max + 1)
+    const newId = (Math.max(...idList, 0) + 1).toString();
+
+    // Insert new tool type into database
     await pool
       .request()
       .input("idToolType", sql.VarChar(50), newId)
@@ -713,6 +739,7 @@ const addNewToolType = async (req, res) => {
         VALUES (@idToolType, @name, @iconURL)
       `);
 
+    // Return success response
     res.json({
       success: true,
       message: "Thêm loại công cụ thành công",
@@ -726,6 +753,7 @@ const addNewToolType = async (req, res) => {
     });
   }
 };
+
 
 
 module.exports = {

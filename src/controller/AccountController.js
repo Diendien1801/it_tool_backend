@@ -6,45 +6,48 @@ const bcrypt = require("bcrypt"); // Import bcrypt
 // Hàm giải mã token để lấy idUser
 const getUserIdFromToken = (req) => {
   try {
-    console.log("[DEBUG] Bắt đầu lấy idUser từ token");
+    console.log("[DEBUG] Starting to extract idUser from token");
 
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-      console.error("[ERROR] Không tìm thấy Authorization Header");
-      throw new Error("Không tìm thấy Authorization Header");
+      console.error("[ERROR] Authorization Header not found");
+      throw new Error("Authorization Header not found");
     }
 
     console.log(`[DEBUG] Authorization Header: ${authHeader}`);
 
-    const token = authHeader.split(" ")[1]; // Lấy token từ chuỗi "Bearer <token>"
+    const token = authHeader.split(" ")[1]; // Extract token from "Bearer <token>"
     if (!token) {
-      console.error("[ERROR] Không tìm thấy token trong Header");
-      throw new Error("Không tìm thấy token");
+      console.error("[ERROR] Token not found in Header");
+      throw new Error("Token not found");
     }
 
-    console.log(`[DEBUG] Token nhận được: ${token}`);
+    console.log(`[DEBUG] Token received: ${token}`);
 
-    const decoded = jwt.verify(token, JWT_SECRET); // Giải mã token
-    console.log(`[DEBUG] Token được giải mã:`, decoded);
+    const decoded = jwt.verify(token, JWT_SECRET); // Decode the token
+    console.log(`[DEBUG] Token decoded:`, decoded);
 
     if (!decoded.idUser) {
-      console.error("[ERROR] idUser không tồn tại trong token");
-      throw new Error("idUser không tồn tại trong token");
+      console.error("[ERROR] idUser not found in token");
+      throw new Error("idUser not found in token");
     }
 
-    console.log(`[DEBUG] idUser lấy được: ${decoded.idUser}`);
+    console.log(`[DEBUG] Extracted idUser: ${decoded.idUser}`);
     return decoded.idUser;
   } catch (error) {
-    console.error(`[ERROR] Lỗi khi lấy idUser từ token: ${error.message}`);
-    throw error; // Ném lỗi để xử lý tiếp trong middleware/controller
+    console.error(
+      `[ERROR] Failed to extract idUser from token: ${error.message}`
+    );
+    throw error; // Rethrow the error to be handled by middleware/controller
   }
 };
+
 
 // Lấy thông tin tài khoản
 const getAccountInfo = async (req, res) => {
   try {
     const idUser = getUserIdFromToken(req);
-    console.log(`[DEBUG] Lấy thông tin user với idUser: ${idUser}`);
+    console.log(`[DEBUG] Fetching user info with idUser: ${idUser}`);
 
     const pool = await poolPromise;
     const result = await pool
@@ -57,34 +60,35 @@ const getAccountInfo = async (req, res) => {
     if (result.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy người dùng",
+        message: "User not found",
         data: null,
       });
     }
 
-    console.log(`[DEBUG] Thông tin user:`, result.recordset[0]);
+    console.log(`[DEBUG] User info:`, result.recordset[0]);
     res.json({
       success: true,
       data: result.recordset[0],
-      message: "Lấy thông tin tài khoản thành công",
+      message: "Account information retrieved successfully",
     });
   } catch (error) {
-    console.error("[ERROR] Lỗi khi lấy thông tin tài khoản:", error);
+    console.error("[ERROR] Error retrieving account information:", error);
     res.status(401).json({
       success: false,
-      message: "Lỗi xác thực hoặc lấy thông tin tài khoản",
+      message: "Authentication or account retrieval error",
       error: error.message,
       data: null,
     });
   }
 };
 
+
 // Lấy danh sách tool yêu thích
 const getFavouriteTools = async (req, res) => {
   try {
     const idUser = getUserIdFromToken(req);
     console.log(
-      `🔍 [DEBUG] Lấy danh sách tool yêu thích cho idUser: ${idUser}`
+      `🔍 [DEBUG] Retrieving favorite tools list for idUser: ${idUser}`
     );
 
     const pool = await poolPromise;
@@ -100,33 +104,34 @@ const getFavouriteTools = async (req, res) => {
       .input("idUser", sql.UniqueIdentifier, idUser)
       .query(query);
 
-    console.log("📦 [DEBUG] Kết quả truy vấn:", result.recordset);
+    console.log("📦 [DEBUG] Query result:", result.recordset);
     res.json({
       success: true,
       data: result.recordset,
-      message: "Lấy danh sách tool yêu thích thành công",
+      message: "Successfully retrieved favorite tools list",
     });
   } catch (error) {
-    console.error("❌ [ERROR] Lỗi khi lấy danh sách tool yêu thích:", error);
+    console.error("❌ [ERROR] Error retrieving favorite tools list:", error);
     res.status(500).json({
       success: false,
       data: null,
-      message: "Lỗi khi lấy danh sách tool yêu thích",
+      message: "Failed to retrieve favorite tools list",
       error: error.message,
     });
   }
 };
+
 
 // Thêm tool yêu thích
 const addFavouriteTool = async (req, res) => {
   try {
     const idUser = getUserIdFromToken(req);
     const { idTool } = req.body;
-    console.log("Thêm tool yêu thích:", idUser, idTool);
+    console.log("Adding favourite tool:", idUser, idTool);
 
     const pool = await poolPromise;
 
-    // Kiểm tra xem tool đã tồn tại trong danh sách yêu thích chưa
+    // Check if the tool already exists in the user's favourites
     const checkQuery = `SELECT * FROM FavouriteTools WHERE idUser = @idUser AND idTool = @idTool`;
     const checkResult = await pool
       .request()
@@ -137,12 +142,12 @@ const addFavouriteTool = async (req, res) => {
     if (checkResult.recordset.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "Tool đã tồn tại trong danh sách yêu thích",
+        message: "Tool already exists in favourites list",
         data: null,
       });
     }
 
-    // Thêm tool vào danh sách yêu thích
+    // Insert the tool into the favourites list
     const insertQuery = `INSERT INTO FavouriteTools (idUser, idTool) VALUES (@idUser, @idTool)`;
     await pool
       .request()
@@ -152,29 +157,30 @@ const addFavouriteTool = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Thêm tool vào danh sách yêu thích thành công",
+      message: "Tool added to favourites successfully",
     });
   } catch (error) {
-    console.error("Lỗi khi thêm tool vào danh sách yêu thích:", error);
+    console.error("Error while adding tool to favourites:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi thêm tool vào danh sách yêu thích",
+      message: "Error while adding tool to favourites",
       data: null,
       error: error.message,
     });
   }
 };
 
+
 // Xóa tool yêu thích
 const removeFavouriteTool = async (req, res) => {
   try {
     const idUser = getUserIdFromToken(req);
     const { idTool } = req.body;
-    console.log("Xóa tool yêu thích:", idUser, idTool);
+    console.log("Removing favourite tool:", idUser, idTool);
 
     const pool = await poolPromise;
 
-    // Xóa tool khỏi danh sách yêu thích
+    // Remove tool from the favourites list
     const deleteQuery = `DELETE FROM FavouriteTools WHERE idUser = @idUser AND idTool = @idTool`;
     await pool
       .request()
@@ -184,28 +190,29 @@ const removeFavouriteTool = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Xóa tool khỏi danh sách yêu thích thành công",
+      message: "Tool removed from favourites successfully",
     });
   } catch (error) {
-    console.error("Lỗi khi xóa tool khỏi danh sách yêu thích:", error);
+    console.error("Error while removing tool from favourites:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi xóa tool khỏi danh sách yêu thích",
+      message: "Error while removing tool from favourites",
       data: null,
       error: error.message,
     });
   }
 };
 
+
 // xin nâng cấp tài khoản lên premium
 const requestUpgradeAccount = async (req, res) => {
   try {
     const idUser = getUserIdFromToken(req);
-    console.log(`[DEBUG] Gửi yêu cầu nâng cấp cho idUser: ${idUser}`);
+    console.log(`[DEBUG] Sending upgrade request for idUser: ${idUser}`);
 
     const pool = await poolPromise;
 
-    // 1. Lấy thông tin level hiện tại
+    // 1. Get current account level
     const userResult = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser)
@@ -214,22 +221,22 @@ const requestUpgradeAccount = async (req, res) => {
     if (userResult.recordset.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy người dùng",
+        message: "User not found",
       });
     }
 
     const currentLevel = userResult.recordset[0].level;
-    console.log(`[DEBUG] Level hiện tại: ${currentLevel}`);
+    console.log(`[DEBUG] Current level: ${currentLevel}`);
 
-    // 2. Nếu đã là premium thì không cần nâng cấp nữa
+    // 2. If already premium, no need to upgrade
     if (currentLevel === "premium") {
       return res.status(400).json({
         success: false,
-        message: "Tài khoản của bạn đã ở mức cao nhất (premium)",
+        message: "Your account is already at the highest level (premium)",
       });
     }
 
-    // 3. Kiểm tra yêu cầu nâng cấp gần nhất
+    // 3. Check most recent upgrade request
     const checkRequest = await pool
       .request()
       .input("idUser", sql.UniqueIdentifier, idUser).query(`
@@ -245,24 +252,27 @@ const requestUpgradeAccount = async (req, res) => {
       if (status === "pending") {
         return res.status(400).json({
           success: false,
-          message: "Bạn đã gửi yêu cầu nâng cấp và đang chờ xử lý.",
+          message:
+            "You have already submitted an upgrade request and it's pending.",
         });
       }
 
       if (status === "accepted") {
         return res.status(400).json({
           success: false,
-          message: "Tài khoản của bạn đã được nâng cấp.",
+          message: "Your account has already been upgraded.",
         });
       }
 
-      // Nếu bị từ chối thì vẫn cho phép gửi lại => không return ở đây
+      // If rejected, allow sending a new request
       if (status === "rejected") {
-        console.log(`[INFO] Yêu cầu trước bị từ chối, cho phép gửi lại`);
+        console.log(
+          `[INFO] Previous request was rejected, allowing resubmission.`
+        );
       }
     }
 
-    // 4. Chèn yêu cầu mới (status = 'pending', createdAt = GETDATE())
+    // 4. Insert new upgrade request (status = 'pending', createdAt = GETDATE())
     const insertQuery = `
       INSERT INTO UpgradeRequests (idUser, status, createdAt)
       VALUES (@idUser, 'pending', GETDATE())
@@ -275,17 +285,54 @@ const requestUpgradeAccount = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Gửi yêu cầu nâng cấp thành công. Vui lòng chờ duyệt.",
+      message:
+        "Upgrade request submitted successfully. Please wait for approval.",
     });
   } catch (error) {
-    console.error("❌ [ERROR] Gửi yêu cầu nâng cấp lỗi:", error);
+    console.error("❌ [ERROR] Error submitting upgrade request:", error);
     res.status(500).json({
       success: false,
-      message: "Lỗi khi gửi yêu cầu nâng cấp tài khoản",
+      message: "An error occurred while submitting upgrade request",
       error: error.message,
     });
   }
 };
+// lấy danh sách yêu cầu nâng cấp history
+const getUpgradeHistory = async (req, res) => {
+  try {
+    const idUser = getUserIdFromToken(req);
+    console.log(`[DEBUG] Fetching upgrade history for idUser: ${idUser}`);
+
+    const pool = await poolPromise;
+    const query = `
+      SELECT * FROM UpgradeRequests
+      WHERE idUser = @idUser
+      ORDER BY createdAt DESC
+    `;
+
+    const result = await pool
+      .request()
+      .input("idUser", sql.UniqueIdentifier, idUser)
+      .query(query);
+
+    console.log("📦 [DEBUG] Upgrade history:", result.recordset);
+    res.json({
+      success: true,
+      data: result.recordset,
+      message: "Successfully retrieved upgrade history",
+    });
+  } catch (error) {
+    console.error("❌ [ERROR] Error retrieving upgrade history:", error);
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: "Failed to retrieve upgrade history",
+      error: error.message,
+    });
+  }
+};
+
+
 
 
 
@@ -296,5 +343,5 @@ module.exports = {
   addFavouriteTool,
   removeFavouriteTool,
   requestUpgradeAccount,
-  
+  getUpgradeHistory,
 };
